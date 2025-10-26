@@ -33,10 +33,10 @@ Install directly from GitHub repository:
 
 ```bash
 # Using uv
-uv tool install git+https://github.com/yourusername/tos_tool.git
+uv tool install git+https://github.com/arunkumaranand/tos_tool.git
 
 # Using pip
-pip install git+https://github.com/yourusername/tos_tool.git
+pip install git+https://github.com/arunkumaranand/tos_tool.git
 ```
 
 ### From Local Source (Development)
