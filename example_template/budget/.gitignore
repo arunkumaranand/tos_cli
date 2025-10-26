@@ -1,0 +1,6 @@
+# Ignore temporary files
+*.tmp
+~$*.xlsx
+
+# Ignore backup files
+*.bak

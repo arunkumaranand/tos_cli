@@ -1,0 +1,11 @@
+key,value,updated_on,comment
+tools,c:\aka\tools,2025-10-24 10:00:00,Development tools
+proj_a_code,d:\aka\projects\project_a\code,2025-10-24 10:00:00,Project A code directory
+proj_b_code,d:\aka\projects\project_b\code,2025-10-24 10:00:00,Project B code directory
+downloads,c:\Users\YourName\Downloads,2025-10-24 10:00:00,Downloads folder
+docs,c:\Users\YourName\Documents,2025-10-24 10:00:00,Documents folder
+desktop,c:\Users\YourName\Desktop,2025-10-24 10:00:00,Desktop folder
+workspace,d:\workspace,2025-10-24 10:00:00,Main workspace
+repos,d:\repos,2025-10-24 10:00:00,Git repositories
+scripts,c:\aka\scripts,2025-10-24 10:00:00,Custom scripts
+backup,e:\backup,2025-10-24 10:00:00,Backup location
