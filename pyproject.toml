@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Arunkumar Anand", email = "arunkumaranand@gmail.com"}
 ]
 keywords = ["cli", "productivity", "environment", "templates", "workflow"]
 classifiers = [
@@ -38,6 +38,7 @@ Documentation = "https://github.com/yourusername/tos_tool/blob/main/README.md"
 
 [project.scripts]
 tos = "main:cli"
+t = "main:cli"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -45,4 +46,17 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["main"]
+
+# Install wrapper scripts alongside console entry points.
+# This ensures `tos-cd.cmd` is available on Windows when installed via pip/uv.
+script-files = [
+    "wrappers/cmd/tos-cd.cmd",
+    "wrappers/cmd/td.cmd",
+]
+
+# Ship the PowerShell wrapper as data so users can dot-source it.
+[tool.setuptools.data-files]
+"share/tos-tool/powershell" = [
+    "wrappers/powershell/tos.ps1",
+]
 

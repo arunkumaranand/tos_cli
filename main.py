@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import click
+import fnmatch
 
 
 def get_config_dir():
@@ -195,6 +196,18 @@ def load_env_config():
             env_vars[row['key']] = row['value']
     
     return env_vars
+
+
+def _resolve_env_key_case_insensitive(env_vars, name):
+    """Return the actual key in env_vars matching name, case-insensitive.
+
+    If no match, returns None.
+    """
+    lname = name.lower()
+    for k in env_vars.keys():
+        if k.lower() == lname:
+            return k
+    return None
 
 
 def add_env_variable(key, value, comment=None, force=False):
@@ -483,8 +496,11 @@ def env_list():
         click.echo("Environment Variables")
         click.echo("=" * 40)
         
-        max_key_len = max(len(key) for key in env_vars.keys())
-        for key, value in env_vars.items():
+        # Sort keys case-insensitively for consistent display
+        sorted_keys = sorted(env_vars.keys(), key=lambda k: k.lower())
+        max_key_len = max(len(key) for key in sorted_keys)
+        for key in sorted_keys:
+            value = env_vars[key]
             click.echo(f"{key.ljust(max_key_len)} = {value}")
     
     except Exception as e:
@@ -512,6 +528,54 @@ def env_add(key, value, comment, force):
         click.echo(f"Error adding environment variable: {e}", err=True)
 
 
+@env.command('like')
+@click.argument('patterns', nargs=-1, required=True)
+def env_like(patterns):
+    """Search env variable names by wildcard pattern(s) (case-insensitive).
+
+    Examples:
+      t env like a*
+      t env like *_home
+      t env like a* *code*
+    """
+    try:
+        env_vars = load_env_config()
+        if not env_vars:
+            click.echo("No environment variables configured in tos_env.csv")
+            return
+
+        # Normalize patterns list
+        if len(patterns) == 1:
+            pattern_list = [patterns[0]]
+        else:
+            pattern_list = list(patterns)
+
+        # Case-insensitive wildcard match on keys for any of the provided patterns
+        lowered_keys = {k: k.lower() for k in env_vars.keys()}
+        lowered_patterns = [p.lower() for p in pattern_list]
+        matched = []
+        for k, lk in lowered_keys.items():
+            if any(fnmatch.fnmatch(lk, lp) for lp in lowered_patterns):
+                matched.append(k)
+
+        if not matched:
+            click.echo("No matches.")
+            return
+
+        matches = sorted(matched, key=lambda k: k.lower())
+        max_key_len = max(len(k) for k in matches)
+        if len(pattern_list) == 1:
+            click.echo(f"Matches for pattern: {pattern_list[0]}")
+        else:
+            click.echo(f"Matches for patterns: {' '.join(pattern_list)}")
+        click.echo("=" * 40)
+        for k in matches:
+            click.echo(f"{k.ljust(max_key_len)} = {env_vars[k]}")
+
+    except Exception as e:
+        click.echo(f"Error filtering environment variables: {e}", err=True)
+
+
 @cli.command()
 @click.argument('env_name')
 def cd(env_name):
@@ -522,24 +586,55 @@ def cd(env_name):
     """
     try:
         env_vars = load_env_config()
-        
-        if env_name not in env_vars:
+
+        match_key = _resolve_env_key_case_insensitive(env_vars, env_name)
+        if not match_key:
             click.echo(f"Error: Environment variable '{env_name}' not found", err=True)
             click.echo(f"Available: {', '.join(env_vars.keys())}")
             return
-        
-        path = env_vars[env_name]
+
+        path = env_vars[match_key]
         
         # Check if path exists
         if not Path(path).exists():
             click.echo(f"Warning: Path does not exist: {path}", err=True)
         
-        # Output the cd command for Windows cmd
-        click.echo(f"cd /d {path}")
-        click.echo(f"\n# To change directory, run: tos cd {env_name} | cmd", err=True)
-    
+        # Output shell-specific commands users can evaluate
+        shell = os.getenv('PSModulePath')
+        if shell:
+            click.echo(f"Set-Location -Path \"{path}\"")
+            click.echo(f"\n# PowerShell: t cd {env_name} | Invoke-Expression", err=True)
+            click.echo(f"# PowerShell (legacy): tos cd {env_name} | Invoke-Expression", err=True)
+        else:
+            click.echo(f"cd /d {path}")
+            click.echo(f"\n# CMD: td {env_name}", err=True)
+            click.echo(f"# CMD (legacy): tos cd {env_name} | cmd", err=True)
+
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
+
+
+@cli.command()
+@click.argument('env_name')
+def path(env_name):
+    """Print only the resolved path for an env name.
+
+    Intended for shell wrappers to consume. Writes the path to stdout
+    and no extra text. On error, prints a message to stderr and exits non-zero.
+    """
+    try:
+        env_vars = load_env_config()
+
+        match_key = _resolve_env_key_case_insensitive(env_vars, env_name)
+        if not match_key:
+            click.echo(f"Environment variable '{env_name}' not found", err=True)
+            sys.exit(1)
+
+        path_value = env_vars[match_key]
+        click.echo(path_value)
+    except Exception as e:
+        click.echo(f"Error resolving path: {e}", err=True)
+        sys.exit(1)
 
 
 @cli.command()
@@ -613,4 +708,4 @@ def history(limit, command):
 
 
 if __name__ == "__main__":
-    cli()
+    cli(windows_expand_args=False)
