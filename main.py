@@ -341,32 +341,44 @@ def init(template, force):
     # Copy template contents to current directory
     copied_files = []
     overwritten_files = []
+    copied_dirs_count = 0
     
-    for item in template_dir.rglob('*'):
-        if item.is_file():
-            relative_path = item.relative_to(template_dir)
+    # Ensure all directories and files (including hidden) are copied
+    for root, dirs, files in os.walk(template_dir):
+        root_path = Path(root)
+        rel_root = root_path.relative_to(template_dir)
+
+        # Create corresponding directories in both destinations
+        for d in dirs:
+            (current_dir / rel_root / d).mkdir(parents=True, exist_ok=True)
+            (tos_dir / rel_root / d).mkdir(parents=True, exist_ok=True)
+            copied_dirs_count += 1
+
+        # Copy files and track overwrite/new
+        for f in files:
+            src_file = root_path / f
+            relative_path = src_file.relative_to(template_dir)
             dest_file = current_dir / relative_path
-            
-            # Track if file is being overwritten
+
             file_exists = dest_file.exists()
-            
+
             dest_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, dest_file)
-            
+            shutil.copy2(src_file, dest_file)
+
             if file_exists:
                 overwritten_files.append(relative_path)
             else:
                 copied_files.append(relative_path)
-            
-            # Also copy to .tos directory
+
             tos_dest = tos_dir / relative_path
             tos_dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, tos_dest)
+            shutil.copy2(src_file, tos_dest)
     
     click.echo(f"✓ Initialized '{template}' template in {current_dir}")
     click.echo(f"✓ Created .tos directory")
     click.echo(f"✓ Copied {len(copied_files)} file(s)")
     
+    click.echo(f"  Directories: {copied_dirs_count}")
     if overwritten_files:
         click.echo(f"✓ Overwritten {len(overwritten_files)} file(s)")
     
@@ -459,11 +471,15 @@ def template_add(name, force):
         
         shutil.copytree(current_dir, template_dest, ignore=ignore_func)
         
-        # Count copied files
-        file_count = sum(1 for _ in template_dest.rglob('*') if _.is_file())
-        
+        # Count copied files and directories (includes hidden)
+        files_count = 0
+        dirs_count = 0
+        for _, dirs, files in os.walk(template_dest):
+            dirs_count += len(dirs)
+            files_count += len(files)
+
         click.echo(f"✓ Template '{name}' created successfully")
-        click.echo(f"✓ Copied {file_count} file(s) from {current_dir}")
+        click.echo(f"✓ Copied {files_count} file(s) and {dirs_count} directorie(s) from {current_dir}")
         click.echo(f"✓ Template location: {template_dest}")
         click.echo(f"\nUsage: tos init -t {name}")
         
