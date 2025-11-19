@@ -653,6 +653,210 @@ def path(env_name):
         sys.exit(1)
 
 
+@cli.command(context_settings=dict(allow_interspersed_args=True))
+@click.argument('project_name', required=False)
+@click.option('-t', '--template', multiple=True, help='Template(s) to apply (can specify multiple)')
+@click.option('-r', '--recent', 'recent_index', type=int, default=None, help='Open recent project from history (0 is most recent, 1 is second most recent, etc.)')
+def wm(project_name, template, recent_index):
+    """Working memory - manage projects with templates.
+    
+    Usage:
+      tos wm                         - Print working memory location
+      tos wm project1                - Create project1 with default template
+      tos wm project1 -t tmpl1 tmpl2 - Create project1 and apply multiple templates
+      tos wm --recent 0              - Open the most recent project
+      tos wm --recent 1              - Open the second most recent project
+    
+    Assumes 'wm' environment variable exists pointing to working memory location.
+    """
+    # Handle --recent flag
+    if recent_index is not None:
+        wm_recent_and_open(recent_index)
+        return
+    
+    # If no project name and no recent flag, show working memory location
+    if not project_name:
+        try:
+            env_vars = load_env_config()
+            match_key = _resolve_env_key_case_insensitive(env_vars, 'wm')
+            
+            if not match_key:
+                click.echo("Error: Environment variable 'wm' not found", err=True)
+                click.echo("Set it up with: tos env add -k wm -v <path>", err=True)
+                return
+            
+            wm_path = env_vars[match_key]
+            click.echo(wm_path)
+        except Exception as e:
+            click.echo(f"Error: {e}", err=True)
+        return
+    
+    # Create project with optional templates
+    try:
+        env_vars = load_env_config()
+        match_key = _resolve_env_key_case_insensitive(env_vars, 'wm')
+        
+        if not match_key:
+            click.echo("Error: Environment variable 'wm' not found", err=True)
+            click.echo("Set it up with: tos env add -k wm -v <path>", err=True)
+            return
+        
+        wm_path = Path(env_vars[match_key])
+        project_path = wm_path / project_name
+        
+        # Check if project already exists
+        if project_path.exists():
+            click.echo(f"Project '{project_name}' already exists")
+            click.echo(f"Opening in VS Code...")
+            try:
+                os.system(f'code "{str(project_path)}"')
+            except Exception as e:
+                click.echo(f"Warning: Could not open in VS Code: {e}", err=True)
+            return
+        
+        # Create project directory
+        project_path.mkdir(parents=True, exist_ok=True)
+        click.echo(f"[OK] Created project directory: {project_path}")
+        
+        # Apply templates (default or specified)
+        templates_to_apply = list(template) if template else ['default']
+        
+        config_dir = get_config_dir()
+        templates_dir = config_dir / 'templates'
+        
+        applied_count = 0
+        for tmpl in templates_to_apply:
+            template_dir = templates_dir / tmpl
+            
+            if not template_dir.exists():
+                click.echo(f"Warning: Template '{tmpl}' not found", err=True)
+                continue
+            
+            # Copy template to project directory (similar to init command)
+            try:
+                for item in template_dir.rglob('*'):
+                    if item.is_file():
+                        try:
+                            relative_path = item.relative_to(template_dir)
+                            dest_file = project_path / relative_path
+                            dest_file.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(item), str(dest_file))
+                        except Exception as file_err:
+                            click.echo(f"Warning: Could not copy file {item.name}: {file_err}", err=True)
+                            continue
+                
+                click.echo(f"[OK] Applied template '{tmpl}'")
+                applied_count += 1
+            except Exception as e:
+                click.echo(f"Error applying template '{tmpl}': {e}", err=True)
+        
+        click.echo(f"[OK] Project '{project_name}' initialized")
+        
+        if applied_count > 0:
+            click.echo(f"Opening in VS Code...")
+            try:
+                os.system(f'code "{str(project_path)}"')
+            except Exception as e:
+                click.echo(f"Warning: Could not open in VS Code: {e}", err=True)
+        
+    except Exception as e:
+        click.echo(f"Error creating project: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+
+
+def wm_recent_and_open(index=0):
+    """Open a recent project from history by index (0 = most recent).
+    
+    Extracts the project name from the most recent wm command arguments
+    and opens that project in VS Code.
+    
+    Args:
+        index: 0 for most recent, 1 for second most recent, etc.
+    """
+    try:
+        db_file = get_db_file()
+        
+        if not db_file.exists():
+            click.echo("No history available yet.", err=True)
+            return
+        
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+        
+        # Query for wm command history, ordered most recent first
+        cursor.execute(
+            "SELECT timestamp, command, arguments, working_directory, status FROM command_history WHERE command = 'wm' ORDER BY timestamp DESC LIMIT 50"
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            click.echo("No wm command history found.", err=True)
+            return
+        
+        # Filter out entries where arguments don't contain a project name
+        # (entries with just --recent, empty args, etc.)
+        project_entries = []
+        for row in rows:
+            timestamp, cmd, args, working_dir, status = row
+            # Skip if args is empty, or if it only contains flags (starts with -)
+            if args and not args.strip().startswith('-'):
+                project_entries.append((timestamp, args, working_dir, status))
+        
+        if not project_entries:
+            click.echo("No project history found.", err=True)
+            return
+        
+        # Check if requested index is valid
+        if index >= len(project_entries):
+            click.echo(f"Error: Index {index} out of range (only {len(project_entries)} project(s) in history)", err=True)
+            return
+        
+        # Get the entry at the specified index
+        timestamp, args, working_dir, status = project_entries[index]
+        
+        # Extract project name (first non-flag argument)
+        project_name = None
+        parts = args.split()
+        for part in parts:
+            if not part.startswith('-'):
+                project_name = part
+                break
+        
+        if not project_name:
+            click.echo(f"Error: Could not extract project name from arguments: {args}", err=True)
+            return
+        
+        # Now open the project (similar to the main wm function)
+        try:
+            env_vars = load_env_config()
+            match_key = _resolve_env_key_case_insensitive(env_vars, 'wm')
+            
+            if not match_key:
+                click.echo("Error: Environment variable 'wm' not found", err=True)
+                return
+            
+            wm_path = Path(env_vars[match_key])
+            project_path = wm_path / project_name
+            
+            if not project_path.exists():
+                click.echo(f"Error: Project '{project_name}' not found at {project_path}", err=True)
+                return
+            
+            click.echo(f"Opening project '{project_name}' (from history index {index})...")
+            try:
+                os.system(f'code "{str(project_path)}"')
+            except Exception as e:
+                click.echo(f"Warning: Could not open in VS Code: {e}", err=True)
+        
+        except Exception as e:
+            click.echo(f"Error: {e}", err=True)
+        
+    except Exception as e:
+        click.echo(f"Error reading history: {e}", err=True)
+
+
 @cli.command()
 @click.option('--limit', default=None, type=int, help='Number of entries to show (overrides config)')
 @click.option('--command', default=None, help='Filter by command name')

@@ -25,6 +25,9 @@ pipx install tos-tool
 
 # Using uv (fastest)
 uv tool install tos-tool
+
+
+uv tool install .  --reinstall      
 ```
 
 ### From GitHub
