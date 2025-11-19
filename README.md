@@ -37,6 +37,7 @@ Install directly from GitHub repository:
 ```bash
 # Using uv
 uv tool install git+https://github.com/arunkumaranand/tos_tool.git
+uv tool install git+https://github.com/arunkumaranand/tos_cli.git --reinstall --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
 
 # Using pip
 pip install git+https://github.com/arunkumaranand/tos_tool.git
